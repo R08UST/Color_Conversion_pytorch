@@ -5,7 +5,7 @@ import torch.optim as optim
 import imageio
 import numpy as np
 import cv2
-from color_op import *
+from differentiable_color_conversion.basic_op import *
 
 import torch
 from torch.optim.optimizer import Optimizer, required
@@ -109,8 +109,58 @@ class Autoencoder(nn.Module):
 
 # define AE model
 
+class rgb2lab():
+    '''
+    input shape should be (batch,w,h,channel) and the value should be(255,255,255)
+    outpush shape will be (batch,channel,w,h) while channel_first is True, the value should be(1,1,1)
+    '''
+    def __init__(self,channel_first=True,normalize=True,dim=4):
+        self.channel_first = channel_first
+        self.normalize = normalize
+        self.dim = dim
 
+    def __call__(self,color):
+        assert color.dim() == self.dim,'data`s dimension is not equall to {}'.format(self.dim)
+        if self.normalize:
+            color = color / 255.
+        srgb = color
+        xyz = rgb2xyz(srgb) #[0,1] maybe exceed than 1, but not exceed than 1.1
+        # TODO
+        xyz = torch.clamp(xyz, 1e-5, 1.1)
+        lab = xyz2lab(xyz) #[-100, 100]
 
+        if self.normalize:
+            lab = lab / 100.
+        if self.channel_first:
+            lab = torch.transpose(lab, 1, 3)
+
+        return lab
+
+class lab2rgb():
+    '''
+    input shape should be (batch,channel,w,h)
+    outpush shape will be (batch,channel,w,h) while channel_first is True
+    '''
+    def __init__(self,channel_first=True,normalize=True,dim=4):
+        self.channel_first = channel_first
+        self.normalize = normalize
+        self.dim=dim
+
+    def __call__(self,color):
+        assert color.dim() == self.dim,'data`s dimension is not equall to {}'.format(self.dim)
+        color = torch.clamp(color, -1, 1)
+        if self.normalize:
+            color = color*100
+
+        xyz = lab2xyz(color)
+        rgb = xyz2rgb(xyz)
+
+        if self.normalize: #[-1,1]
+            rgb = rgb * 255.
+
+        if not self.channel_first:
+            rgb = torch.transpose(rgb, 3, 1)
+        return rgb
 
 class ColorModel(nn.Module):
     '''
